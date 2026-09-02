@@ -20,6 +20,13 @@ class SearchGUI:
 
         tk.Button(top, text="Search", command=self.on_search).pack(side="left")
 
+        hint = tk.Label(
+            self.root,
+            text="love death (AND)    love OR death    love NOT death / -death    king* (wildcard)",
+            fg="gray",
+        )
+        hint.pack(fill="x", padx=10)
+
         self.results = tk.Text(self.root, wrap="word", state="disabled")
         self.results.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
