@@ -27,6 +27,7 @@ Document Loading
    -> Wildcard Processing
    -> Document Retrieval
    -> Ranking (TF-IDF + cosine similarity)
+   -> Query-focused Snippet Generation
    -> GUI Display
 ```
 
@@ -61,7 +62,7 @@ Text diagram:
                         |
                         v
               +-------------------+
-              |  search_engine    |  returns [{filename, score, preview}]
+              |  search_engine    |  returns [{filename, score, snippet}]
               +---------+---------+
                         |
                         v
@@ -93,6 +94,7 @@ project/
 ├── gui.py                    Tkinter GUI
 ├── main.py                   builds the index, launches the GUI
 ├── requirements.txt          (standard library only)
+├── pyrightconfig.json        editor type-checking settings
 └── README.md
 ```
 
@@ -104,7 +106,7 @@ project/
 | `wildcard` | Detect `*` in a term and expand it to matching vocabulary terms via a regular expression. |
 | `query_processor` | Preprocess the query, expand wildcard terms, retrieve documents with AND semantics. |
 | `ranker` | Compute TF-IDF weights and rank candidate documents by cosine similarity to the query. |
-| `search_engine` | Wire everything together; the only class the GUI talks to. |
+| `search_engine` | Wire everything together, build the result snippets; the only class the GUI talks to. |
 | `gui` | Input box, Search button, Enter key, read-only results area. |
 
 ## 4. Tokenization
@@ -232,7 +234,16 @@ so the best-matching document shows 100% and the rest are shown as a percentage
 of it. This is only a display aid; the ranking order is still decided by the raw
 cosine similarity.
 
-## 12. GUI
+## 12. Query-Focused Snippets
+
+`search_engine.SearchEngine.snippet()` builds the short text shown under each
+result. Instead of always taking the start of the file, it finds the first place
+any matched term (wildcard expansions included) appears in the document and
+returns a ~200-character window centred on it, with `...` added at the ends when
+the text is trimmed. If none of the terms can be located in the raw text it falls
+back to the first ~200 characters (`preview()`).
+
+## 13. GUI
 
 `gui.SearchGUI` (Tkinter):
 
@@ -241,11 +252,11 @@ cosine similarity.
 * a read-only, word-wrapped results area.
 
 For each hit it shows the rank, filename, cosine score, relative score (%), and a
-short text preview.
+query-focused snippet (see section 12).
 It shows a plain message (never a crash) for: empty queries, queries containing
 only stop words, no matching documents, and wildcard patterns that match nothing.
 
-## 13. How to Run the Project
+## 14. How to Run the Project
 
 Requirements: Python 3.8+ with Tkinter (included in standard CPython on Windows
 and macOS; on Linux install `python3-tk`). No packages to install.
@@ -262,16 +273,16 @@ Quick check without the GUI:
 python -c "from src.search_engine import SearchEngine; e=SearchEngine('data/documents'); e.build_index(); print(e.search('king*')['results'][:3])"
 ```
 
-## 14. Example Queries
+## 15. Example Queries
 
 | Query | What it demonstrates |
 | --- | --- |
 | `love death` | multi-term AND query; *Romeo and Juliet* acts rank highest |
 | `king crown` | AND query across the history/tragedy acts |
-| `king*` | prefix wildcard (king, kingdom, kingly, kings) |
+| `king*` | prefix wildcard (king, kingly, kingdom, kingdoms, kings) |
 | `*ing` | suffix wildcard (thing, nothing, morning, king) |
 | `mach*ne` | infix wildcard (matches *machine* in *Hamlet* Act 2) |
-| `nobl*` | prefix wildcard (noble, nobler, nobles, nobility) |
+| `nobl*` | prefix wildcard (noble, nobler, nobly, noblest) |
 | `lo*e` | infix wildcard (love, lose, lone, ...) |
 | `the and of` | only stop words -> handled message |
 | `machine learning` | no matching documents -> handled message |
@@ -279,22 +290,23 @@ python -c "from src.search_engine import SearchEngine; e=SearchEngine('data/docu
 Several of these (e.g. `love death`, `king*`, `*ing`) return many documents with
 clearly different scores, which is useful for showing ranking behaviour.
 
-## 15. Limitations
+## 16. Limitations
 
 * Only AND queries are supported (no OR, NOT, phrase, or proximity queries).
 * No stemming, so `love` and `loving` are different terms (use `lov*` instead).
 * Raw term-frequency weighting; no sublinear TF scaling or BM25.
 * Wildcard expansion is a linear scan of the vocabulary.
 * The index is in memory only and rebuilt on every startup (fine for 25 documents).
-* Previews are the first ~200 characters of the file, not a query-focused snippet.
+* Snippets show the text around the first matched term only, with no highlighting
+  and no handling of multiple matches.
 * Ranking is purely lexical: it has no notion of meaning or synonyms.
 
-## 16. Possible Future Improvements
+## 17. Possible Future Improvements
 
 * Add OR / NOT / phrase queries and a small Boolean parser.
 * Add stemming (e.g. a simple Porter stemmer) as an optional step.
 * Store term positions to support phrase and proximity search.
 * Use sublinear TF weighting (`1 + log(tf)`) or BM25 for better ranking.
-* Query-focused snippet generation with highlighted matches.
+* Highlight the matched terms in the snippet and widen it around several matches.
 * Persist the index to disk so startup is instant.
 * Show which terms matched (including wildcard expansions) in the GUI.
