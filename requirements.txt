@@ -1,0 +1,2 @@
+# No external dependencies. Uses the Python standard library only.
+# Tkinter ships with standard CPython installations.
