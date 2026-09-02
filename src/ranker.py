@@ -12,9 +12,10 @@ class Ranker:
     def _prepare(self):
         n = self.index.document_count()
 
-        # idf(term) = log(N / df(term))
+        # idf(term) = log(N / df(term)) + 1  (the +1 keeps terms that appear
+        # in every document from collapsing to zero weight)
         for term, doc_ids in self.index.index.items():
-            self.idf[term] = math.log(n / len(doc_ids))
+            self.idf[term] = math.log(n / len(doc_ids)) + 1
 
         # precompute each document's tf-idf vector length for cosine similarity
         for doc_id in self.index.doc_ids:

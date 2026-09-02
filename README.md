@@ -211,10 +211,11 @@ instant at this scale.
 
 * **Term Frequency** `tf(t, d)` = number of times term `t` appears in document `d`
   (raw count).
-* **Inverse Document Frequency** `idf(t) = log(N / df(t))`, where `N` is the
+* **Inverse Document Frequency** `idf(t) = log(N / df(t)) + 1`, where `N` is the
   total number of documents and `df(t)` is the number of documents containing
-  `t`. Rare terms get a higher weight; a term appearing in every document gets
-  `idf = 0`.
+  `t`. Rare terms get a higher weight; the `+ 1` stops a term that appears in
+  every document (like `love` in this corpus) from collapsing to zero weight, so
+  a one-word query still ranks by term frequency.
 * **TF-IDF weight** `w(t, d) = tf(t, d) * idf(t)`.
 
 Both documents and the query are represented as vectors of TF-IDF weights over
