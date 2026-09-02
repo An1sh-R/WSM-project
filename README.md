@@ -52,7 +52,7 @@ Text diagram:
    query                v
   "king*"      +-------------------+
 ------------->| query_processor   |  preprocess query, expand wildcards,
-              |   + wildcard      |  intersect posting lists (AND)
+              |   + wildcard      |  combine posting lists (AND / OR / NOT)
               +---------+---------+
                         |
                         v
@@ -104,7 +104,7 @@ project/
 | `text_processor` | One reusable `preprocess(text)` used for both documents and queries. |
 | `indexer` | Build `term -> set(doc_ids)`, keep per-document term counts and lengths, expose the vocabulary. |
 | `wildcard` | Detect `*` in a term and expand it to matching vocabulary terms via a regular expression. |
-| `query_processor` | Preprocess the query, expand wildcard terms, retrieve documents with AND semantics. |
+| `query_processor` | Preprocess the query, expand wildcard terms, retrieve documents with AND / OR / NOT semantics. |
 | `ranker` | Compute TF-IDF weights and rank candidate documents by cosine similarity to the query. |
 | `search_engine` | Wire everything together, build the result snippets; the only class the GUI talks to. |
 | `gui` | Input box, Search button, Enter key, read-only results area. |
@@ -157,19 +157,33 @@ Methods: `build()`, `lookup(term)`, `vocabulary()`, `document_count()`,
 
 `query_processor.QueryProcessor.process(query)`:
 
-1. `preprocess()` the query (same normalization / tokenization / stop-word
-   removal as documents).
-2. Drop terms that are empty or only `*`.
-3. For each remaining term:
-   * if it contains `*`, expand it to all matching vocabulary terms and take the
-     **union** of their posting lists;
-   * otherwise, look up its posting list directly.
-4. Intersect the posting lists of all query terms (**AND** semantics): a
-   document is a candidate only if it matches every query term.
-5. Return the candidate document IDs and the list of concrete terms used
-   (wildcard expansions included), which the ranker then scores.
+1. Split the raw query on whitespace and sort the tokens into three kinds:
+   * `OR` (any case) switches the positive terms from AND to OR;
+   * `NOT` (any case) or a leading `-` marks the next term as negative;
+   * everything else is a positive term.
+2. `preprocess()` each term on its own (same normalization / tokenization /
+   stop-word removal as documents) and drop terms that are empty or only `*`.
+3. For each term, get its posting list: a `*` term expands to all matching
+   vocabulary terms and takes the **union** of their posting lists; a plain term
+   is looked up directly.
+4. Combine the positive terms: **intersect** their posting lists by default, or
+   **union** them if an `OR` appeared anywhere in the query.
+5. Subtract the posting list of every negative term. If the query is all
+   negative, start from every document and subtract from there.
+6. Return the candidate document IDs and the list of positive concrete terms
+   (wildcard expansions included), which the ranker then scores. Negative terms
+   are never scored.
 
-Example: `love death` returns only documents that contain both *love* and *death*.
+| Query | Meaning |
+| --- | --- |
+| `love death` | contains *love* AND *death* |
+| `love OR death` | contains *love* OR *death* |
+| `love NOT death` | contains *love* but not *death* |
+| `-death` | every document that does not contain *death* |
+
+`OR` is query-wide: a single `OR` anywhere makes every positive term optional, so
+AND and OR cannot be mixed in one query (`a b OR c` is treated as `a OR b OR c`).
+There is no nesting or parentheses.
 
 ## 9. Wildcard Processing
 
@@ -279,6 +293,9 @@ python -c "from src.search_engine import SearchEngine; e=SearchEngine('data/docu
 | --- | --- |
 | `love death` | multi-term AND query; *Romeo and Juliet* acts rank highest |
 | `king crown` | AND query across the history/tragedy acts |
+| `ghost OR crown` | OR query; matches acts with either term |
+| `hamlet NOT ghost` | AND query with an excluded term |
+| `-death` | pure negative query; documents that never mention *death* |
 | `king*` | prefix wildcard (king, kingly, kingdom, kingdoms, kings) |
 | `*ing` | suffix wildcard (thing, nothing, morning, king) |
 | `mach*ne` | infix wildcard (matches *machine* in *Hamlet* Act 2) |
@@ -292,7 +309,9 @@ clearly different scores, which is useful for showing ranking behaviour.
 
 ## 16. Limitations
 
-* Only AND queries are supported (no OR, NOT, phrase, or proximity queries).
+* Boolean queries are flat: AND, OR and NOT work, but they cannot be mixed,
+  nested, or grouped with parentheses, and there are no phrase or proximity
+  queries.
 * No stemming, so `love` and `loving` are different terms (use `lov*` instead).
 * Raw term-frequency weighting; no sublinear TF scaling or BM25.
 * Wildcard expansion is a linear scan of the vocabulary.
@@ -303,7 +322,7 @@ clearly different scores, which is useful for showing ranking behaviour.
 
 ## 17. Possible Future Improvements
 
-* Add OR / NOT / phrase queries and a small Boolean parser.
+* Add phrase queries and a proper Boolean parser with parentheses and precedence.
 * Add stemming (e.g. a simple Porter stemmer) as an optional step.
 * Store term positions to support phrase and proximity search.
 * Use sublinear TF weighting (`1 + log(tf)`) or BM25 for better ranking.

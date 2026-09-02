@@ -56,13 +56,15 @@ class SearchEngine:
 
         candidate_docs, matched_terms = self.query_processor.process(query)
 
-        if not matched_terms:
-            return {"status": "only_stopwords", "results": []}
-
         if not candidate_docs:
+            if not matched_terms:
+                return {"status": "only_stopwords", "results": []}
             return {"status": "no_match", "results": []}
 
-        ranked = self.ranker.rank(matched_terms, candidate_docs)
+        if matched_terms:
+            ranked = self.ranker.rank(matched_terms, candidate_docs)
+        else:
+            ranked = [(doc_id, 0.0) for doc_id in sorted(candidate_docs)]
 
         max_score = ranked[0][1] if ranked else 0.0
 
