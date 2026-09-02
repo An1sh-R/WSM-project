@@ -28,6 +28,28 @@ class SearchEngine:
             text = text[:length] + "..."
         return text
 
+    def snippet(self, doc_id, terms, length=200):
+        text = re.sub(r"\s+", " ", self.doc_texts[doc_id]).strip()
+        lowered = text.lower()
+
+        position = -1
+        for term in terms:
+            found = lowered.find(term)
+            if found != -1 and (position == -1 or found < position):
+                position = found
+
+        if position == -1:
+            return self.preview(doc_id, length)
+
+        start = max(0, position - length // 2)
+        end = start + length
+        piece = text[start:end].strip()
+        if start > 0:
+            piece = "..." + piece
+        if end < len(text):
+            piece = piece + "..."
+        return piece
+
     def search(self, query):
         if query is None or query.strip() == "":
             return {"status": "empty", "results": []}
@@ -51,7 +73,7 @@ class SearchEngine:
                 "filename": self.doc_filenames[doc_id],
                 "score": score,
                 "relative": relative,
-                "preview": self.preview(doc_id),
+                "preview": self.snippet(doc_id, matched_terms),
             })
 
         return {"status": "ok", "results": results}
