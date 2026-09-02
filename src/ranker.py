@@ -1,5 +1,4 @@
 import math
-from collections import Counter
 
 
 class Ranker:
@@ -25,14 +24,19 @@ class Ranker:
                 total += weight * weight
             self.doc_norm[doc_id] = math.sqrt(total)
 
-    def rank(self, query_terms, candidate_doc_ids):
-        query_counts = Counter(query_terms)
-
-        # build the query tf-idf vector
+    def rank(self, query_groups, candidate_doc_ids):
+        # Each group is one query term: a plain word is a group of one, a
+        # wildcard is the group of terms it expanded to. Spread one unit of
+        # term frequency across the group so a wildcard that expands to many
+        # terms carries about the same weight as a single plain word.
         query_vector = {}
-        for term, freq in query_counts.items():
-            if term in self.idf:
-                query_vector[term] = freq * self.idf[term]
+        for group in query_groups:
+            in_vocab = [term for term in group if term in self.idf]
+            if not in_vocab:
+                continue
+            share = 1.0 / len(in_vocab)
+            for term in in_vocab:
+                query_vector[term] = query_vector.get(term, 0.0) + share * self.idf[term]
 
         query_norm = math.sqrt(sum(w * w for w in query_vector.values()))
         if query_norm == 0:

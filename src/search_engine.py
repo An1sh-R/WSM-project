@@ -54,19 +54,23 @@ class SearchEngine:
         if query is None or query.strip() == "":
             return {"status": "empty", "results": []}
 
-        candidate_docs, matched_terms = self.query_processor.process(query)
+        candidate_docs, matched_groups = self.query_processor.process(query)
+        matched_terms = [term for group in matched_groups for term in group]
+
+        if not matched_groups:
+            if not candidate_docs:
+                return {"status": "only_stopwords", "results": []}
+            # Query had only exclusions (e.g. "-death"); there is nothing to score.
+            return {"status": "no_positive_terms", "results": []}
 
         if not candidate_docs:
-            if not matched_terms:
-                return {"status": "only_stopwords", "results": []}
             return {"status": "no_match", "results": []}
 
-        if matched_terms:
-            ranked = self.ranker.rank(matched_terms, candidate_docs)
-        else:
-            ranked = [(doc_id, 0.0) for doc_id in sorted(candidate_docs)]
+        ranked = self.ranker.rank(matched_groups, candidate_docs)
+        if not ranked:
+            return {"status": "no_match", "results": []}
 
-        max_score = ranked[0][1] if ranked else 0.0
+        max_score = ranked[0][1]
 
         results = []
         for doc_id, score in ranked:

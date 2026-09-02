@@ -168,18 +168,19 @@ Methods: `build()`, `lookup(term)`, `vocabulary()`, `document_count()`,
    is looked up directly.
 4. Combine the positive terms: **intersect** their posting lists by default, or
    **union** them if an `OR` appeared anywhere in the query.
-5. Subtract the posting list of every negative term. If the query is all
-   negative, start from every document and subtract from there.
-6. Return the candidate document IDs and the list of positive concrete terms
-   (wildcard expansions included), which the ranker then scores. Negative terms
-   are never scored.
+5. Subtract the posting list of every negative term. If the query has no
+   positive terms at all, there is nothing to rank, so the search reports
+   "no positive terms" instead of returning every document.
+6. Return the candidate document IDs and the positive terms grouped by query
+   term (each plain word is a group of one; each wildcard is the group of its
+   expansions), which the ranker then scores. Negative terms are never scored.
 
 | Query | Meaning |
 | --- | --- |
 | `love death` | contains *love* AND *death* |
 | `love OR death` | contains *love* OR *death* |
 | `love NOT death` | contains *love* but not *death* |
-| `-death` | every document that does not contain *death* |
+| `-death` | rejected: a query needs at least one term to search for |
 
 `OR` is query-wide: a single `OR` anywhere makes every positive term optional, so
 AND and OR cannot be mixed in one query (`a b OR c` is treated as `a OR b OR c`).
@@ -219,7 +220,10 @@ instant at this scale.
 * **TF-IDF weight** `w(t, d) = tf(t, d) * idf(t)`.
 
 Both documents and the query are represented as vectors of TF-IDF weights over
-the vocabulary.
+the vocabulary. On the query side, each query term contributes one unit of term
+frequency; a wildcard splits that unit evenly across the terms it expands to, so
+`king*` weighs about the same as a single plain word rather than dominating the
+query vector.
 
 ## 11. Cosine Similarity
 

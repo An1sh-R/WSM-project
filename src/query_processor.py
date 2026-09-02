@@ -49,13 +49,18 @@ class QueryProcessor:
         if not positive and not negative:
             return set(), []
 
-        matched_terms = []
+        # Each positive query term becomes one group: a plain word is a group
+        # of one, a wildcard is the group of terms it expanded to. The ranker
+        # weights per group, so a broad wildcard cannot outvote the plain
+        # words next to it.
+        matched_groups = []
 
         if positive:
             doc_sets = []
             for term in positive:
                 docs, expansions = self._docs_for(term)
-                matched_terms.extend(expansions)
+                if expansions:
+                    matched_groups.append(expansions)
                 doc_sets.append(docs)
             result_docs = set(doc_sets[0])
             for docs in doc_sets[1:]:
@@ -67,4 +72,4 @@ class QueryProcessor:
             docs, _ = self._docs_for(term)
             result_docs = result_docs - docs
 
-        return result_docs, matched_terms
+        return result_docs, matched_groups
