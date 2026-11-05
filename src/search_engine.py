@@ -38,6 +38,15 @@ class SearchEngine:
         # An exact phrase hit beats a scattering of single words.
         for phrase in phrases:
             if doc_id in phrase["counts"]:
+                if "near" in phrase:
+                    # a, then up to N-1 words, then b (or the reverse order)
+                    a, b = (re.escape(w) for w in phrase["words"])
+                    gap = r"(?:\W+\w+){0,%d}\W+" % (phrase["near"] - 1)
+                    m = re.search(r"\b(?:%s%s%s|%s%s%s)\b" % (a, gap, b, b, gap, a),
+                                  lowered)
+                    if m:
+                        return m.start()
+                    continue
                 pattern = r"\W+".join(re.escape(w) for w in phrase["words"])
                 m = re.search(pattern, lowered)
                 if m:

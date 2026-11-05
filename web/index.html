@@ -162,14 +162,14 @@
   <main id="results"></main>
 
   <footer>
-    <code>a b</code> AND &nbsp; <code>a OR b</code> &nbsp; <code>a NOT b</code> &nbsp; <code>king*</code> wildcard &nbsp; <code>"exact phrase"</code>
+    <code>a b</code> AND &nbsp; <code>a OR b</code> &nbsp; <code>a NOT b</code> &nbsp; <code>king*</code> wildcard &nbsp; <code>"exact phrase"</code> &nbsp; <code>a /3 b</code> near
   </footer>
 </div>
 
 <script>
 const EXAMPLES = [
   ["love death", "AND"], ["ghost OR crown", "OR"], ["hamlet NOT ghost", "NOT"],
-  ["king*", "wildcard"], ["\"to be or not to be\"", "phrase"], ["mach*ne", "infix"],
+  ["king*", "wildcard"], ["romeo /3 juliet", "near"], ["\"to be or not to be\"", "phrase"], ["mach*ne", "infix"],
 ];
 const $ = id => document.getElementById(id);
 let query = "";
@@ -189,7 +189,7 @@ function highlighter(q) {
   for (const m of q.matchAll(/"([^"]*)"|(\S+)/g)) {
     const raw = m[1] ?? m[2];
     for (let w of raw.split(/\s+/)) {
-      if (/^(or|not)$/i.test(w) || w.startsWith("-")) continue;
+      if (/^(or|not)$/i.test(w) || w.startsWith("-") || /^\/\d+$/.test(w)) continue;
       w = w.replace(/[^A-Za-z0-9*']/g, "");
       if (w.replace(/\*/g, "")) words.push(w);
     }

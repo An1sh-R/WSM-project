@@ -7,6 +7,7 @@ from src.wildcard import has_wildcard, expand
 
 # A quoted phrase, or any run of non-space characters.
 _QUERY_TOKEN = re.compile(r'"([^"]*)"|(\S+)')
+_PROXIMITY = re.compile(r"^/\d+$")
 
 
 class QueryProcessor:
@@ -20,15 +21,37 @@ class QueryProcessor:
     def _parse(self, query):
         """Return (positive, negative, use_or).
 
-        Each entry is ("term", word) or ("phrase", [words]).
+        Each entry is ("term", word), ("phrase", [words]) or
+        ("near", word_a, word_b, distance).
         """
         positive = []
         negative = []
         use_or = False
         negate_next = False
 
-        for match in _QUERY_TOKEN.finditer(query):
-            phrase, raw = match.group(1), match.group(2)
+        lexemes = [(m.group(1), m.group(2)) for m in _QUERY_TOKEN.finditer(query)]
+        i = -1
+        while i + 1 < len(lexemes):
+            i += 1
+            phrase, raw = lexemes[i]
+
+            # "a /N b": a and b within N words of each other, in either order.
+            if phrase is None and i + 2 < len(lexemes):
+                gap_phrase, gap = lexemes[i + 1]
+                right_phrase, right = lexemes[i + 2]
+                if (gap_phrase is None and _PROXIMITY.match(gap)
+                        and int(gap[1:]) >= 1 and right_phrase is None):
+                    left_words = self._phrase_words(raw.lstrip("-"))
+                    right_words = self._phrase_words(right)
+                    if len(left_words) == 1 and len(right_words) == 1:
+                        item = ("near", left_words[0], right_words[0], int(gap[1:]))
+                        (negative if negate_next else positive).append(item)
+                        negate_next = False
+                        i += 2
+                        continue
+
+            if phrase is None and _PROXIMITY.match(raw):
+                continue  # a stray /N with no word on both sides is ignored
 
             if phrase is not None:
                 words = self._phrase_words(phrase)
@@ -76,6 +99,13 @@ class QueryProcessor:
         content = stem_tokens(content) if self.index.stemming else content
         return counts, content
 
+    def _near_docs(self, a, b, distance):
+        content = remove_stop_words([a, b])      # words worth scoring
+        if self.index.stemming:
+            a, b = stem_tokens([a, b])
+            content = stem_tokens(content)
+        return self.index.proximity_counts(a, b, distance), content
+
     def process(self, query):
         """Return (candidate doc IDs, matched term groups, matched phrases).
 
@@ -95,8 +125,15 @@ class QueryProcessor:
 
         if positive:
             doc_sets = []
-            for kind, value in positive:
-                if kind == "phrase":
+            for item in positive:
+                kind, value = item[0], item[1]
+                if kind == "near":
+                    counts, content = self._near_docs(item[1], item[2], item[3])
+                    phrases.append({"words": [item[1], item[2]], "counts": counts,
+                                    "near": item[3]})
+                    matched_groups.extend([w] for w in content)
+                    doc_sets.append(set(counts))
+                elif kind == "phrase":
                     counts, content = self._phrase_docs(value)
                     phrases.append({"words": value, "counts": counts})
                     matched_groups.extend([w] for w in content)
@@ -112,8 +149,11 @@ class QueryProcessor:
         else:
             result_docs = set(self.index.doc_ids)
 
-        for kind, value in negative:
-            if kind == "phrase":
+        for item in negative:
+            kind, value = item[0], item[1]
+            if kind == "near":
+                docs = set(self._near_docs(item[1], item[2], item[3])[0])
+            elif kind == "phrase":
                 docs = set(self._phrase_docs(value)[0])
             else:
                 docs, _ = self._docs_for(value)

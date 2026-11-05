@@ -183,6 +183,7 @@ Methods: `build()`, `lookup(term)`, `vocabulary()`, `document_count()`,
 | `love OR death` | contains *love* OR *death* |
 | `love NOT death` | contains *love* but not *death* |
 | `"to be or not to be"` | exact phrase (needs the positional index) |
+| `romeo /3 juliet` | both words within 3 positions of each other, either order (section 22) |
 | `-death` | rejected: a query needs at least one term to search for |
 
 `OR` is query-wide: a single `OR` anywhere makes every positive term optional, so
@@ -324,8 +325,9 @@ clearly different scores, which is useful for showing ranking behaviour.
 ## 16. Limitations
 
 * Boolean queries are flat: AND, OR and NOT work, but they cannot be mixed,
-  nested, or grouped with parentheses. Phrase queries exist but proximity
-  queries (`a /3 b`) do not.
+  nested, or grouped with parentheses.
+* Proximity (`a /N b`) works for two plain words only: no wildcards, no chains
+  like `a /2 b /2 c`, and the words `or`/`not` cannot be used as operands.
 * Stemming is off by default; with it on, wildcard patterns match the *stemmed*
   vocabulary (so `*ing` finds almost nothing).
 * No BM25.
@@ -340,7 +342,6 @@ clearly different scores, which is useful for showing ranking behaviour.
 ## 17. Possible Future Improvements
 
 * A proper Boolean parser with parentheses and precedence.
-* Proximity search, using the positional index that already exists.
 * BM25 as an alternative ranker.
 * Highlight the matched terms in the snippet and widen it around several matches.
 * Persist the index to disk so startup is instant.
@@ -411,3 +412,18 @@ here. The added terms are mostly character names, so every act of the same play
 rises together. Smaller beta values (0.1-0.2, 5 terms) reached about the
 baseline or slightly above, but I chose those after seeing this test set, so
 treat that as a hint rather than a result.
+
+## 22. Proximity Queries
+
+`a /N b` matches documents where `a` and `b` occur within `N` positions of each
+other, in either order: `romeo /3 juliet`, `alas /2 yorick`. Positions count every
+word including stop words, so `/3` allows at most two words in between, and
+`/1` means adjacent (the same as the phrase `"a b"`, but order-insensitive).
+
+`InvertedIndex.proximity_counts(a, b, N)` walks the positions of `a` in each
+document and binary-searches the sorted positions of `b` for any inside
+`[p - N, p + N]`; the number of such pairs is the occurrence count. A proximity
+item is a positive term like any other, so it combines with AND / OR / NOT, and
+its content words are scored with TF-IDF (a pure stop-word pair such as
+`to /1 be` is ranked by pair count). The snippet centres on the matching window.
+A `/N` with no word on both sides, or `/0`, is ignored.
