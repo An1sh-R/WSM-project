@@ -196,7 +196,7 @@ function highlighter(q) {
   }
   if (!words.length) return null;
   const body = words.map(w => w.split("*").map(p => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\w*"));
-  return new RegExp("\\b(" + body.join("|") + ")" + "\\w*", "gi");
+  return new RegExp("\\b(?:" + body.join("|") + ")\\b", "gi");
 }
 
 function fillSnippet(el, text, re) {
