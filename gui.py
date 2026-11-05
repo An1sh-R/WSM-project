@@ -10,6 +10,8 @@ ACCENT = "#8c2f39"
 ACCENT_SOFT = "#e9d6d8"
 BORDER = "#e7e2d9"
 
+NL = "\n"
+
 UI_FONT = "Segoe UI"
 TEXT_FONT = "Georgia"
 
@@ -17,6 +19,8 @@ TEXT_FONT = "Georgia"
 class SearchGUI:
     def __init__(self, engine):
         self.engine = engine
+        self.last_query = ""
+        self.relevant = []          # filenames the user marked as relevant
 
         self.root = tk.Tk()
         self.root.title("Shakespeare Search")
@@ -100,7 +104,7 @@ class SearchGUI:
 
         tk.Label(
             self.root,
-            text="love death  →  AND        love OR death        love NOT death  /  -death        king*  →  wildcard",
+            text="love death  →  AND     love OR death     love NOT death     king*  wildcard     \"to be or not to be\"  phrase",
             bg=PAGE, fg=MUTED, font=(UI_FONT, 9),
         ).pack(anchor="w", padx=26, pady=(0, 14))
 
@@ -128,6 +132,12 @@ class SearchGUI:
             "snippet", foreground="#4a4a4a", font=(TEXT_FONT, 10, "italic"),
             lmargin1=14, lmargin2=14, spacing1=4, spacing3=10,
         )
+        self.results.tag_configure(
+            "feedback", foreground=ACCENT, font=(UI_FONT, 9, "underline"),
+            lmargin1=14, spacing3=4)
+        self.results.tag_configure(
+            "marked", foreground=MUTED, font=(UI_FONT, 9, "bold"),
+            lmargin1=14, spacing3=4)
         self.results.tag_configure(
             "notice", foreground=MUTED, font=(UI_FONT, 11), justify="center",
             spacing1=40,
@@ -161,20 +171,41 @@ class SearchGUI:
         filled = max(0, min(cells, filled))
         return "█" * filled, "█" * (cells - filled)
 
+    NOTICES = {
+        "empty": "Please enter a query.",
+        "only_stopwords": "Your query contains only stop words. Try different terms.",
+        "no_positive_terms": "Your query only excludes terms. Add a word to search for.",
+        "no_match": "No matching documents found.",
+    }
+
     def on_search(self, event=None):
         query = self.entry.get()
+        self.last_query = query
+        self.relevant = []
         response = self.engine.search(query)
-        status = response["status"]
+        self._render(response, "for “{}”".format(query.strip()))
 
-        notices = {
-            "empty": "Please enter a query.",
-            "only_stopwords": "Your query contains only stop words. Try different terms.",
-            "no_positive_terms": "Your query only excludes terms. Add a word to search for.",
-            "no_match": "No matching documents found.",
-        }
-        if status in notices:
-            self._show_notice(notices[status])
-            self.status.config(text="No results for “{}”".format(query.strip()))
+    def on_feedback(self, filename):
+        if filename in self.relevant:
+            self.relevant.remove(filename)
+        else:
+            self.relevant.append(filename)
+        if self.relevant:
+            response = self.engine.feedback(self.last_query, self.relevant)
+            label = "refined by {} marked document{}".format(
+                len(self.relevant), "" if len(self.relevant) == 1 else "s")
+            if response.get("expanded_terms"):
+                label += " · added terms: " + ", ".join(response["expanded_terms"][:6])
+        else:
+            response = self.engine.search(self.last_query)
+            label = "for “{}”".format(self.last_query.strip())
+        self._render(response, label)
+
+    def _render(self, response, label):
+        status = response["status"]
+        if status in self.NOTICES:
+            self._show_notice(self.NOTICES[status])
+            self.status.config(text="No results " + label)
             return
 
         results = response["results"]
@@ -182,22 +213,36 @@ class SearchGUI:
         for i, result in enumerate(results, start=1):
             fill, track = self._relevance_bar(result["relative"])
             self.results.insert("end", "{:>2}  ".format(i), "rank")
-            self.results.insert("end", result["filename"] + "\n", "title")
+            self.results.insert("end", result["filename"] + NL, "title")
             self.results.insert("end", fill, "bar_fill")
             self.results.insert("end", track + "  ", "bar_track")
             self.results.insert(
                 "end",
-                "{:.0f}%  relevance ·  score {:.4f}\n".format(
-                    result["relative"], result["score"]),
+                "{:.0f}%  relevance ·  score {:.4f}{}".format(
+                    result["relative"], result["score"], NL),
                 "meta",
             )
-            self.results.insert("end", result["preview"] + "\n", "snippet")
+            self.results.insert("end", result["preview"] + NL, "snippet")
+
+            name = result["filename"]
+            marked = name in self.relevant
+            tag = "fb{}".format(i)
+            self.results.insert(
+                "end",
+                ("✓ marked relevant (click to undo)" if marked
+                 else "+ more like this") + NL,
+                ("marked" if marked else "feedback", tag))
+            self.results.tag_bind(
+                tag, "<Button-1>", lambda e, n=name: self.on_feedback(n))
+            self.results.tag_bind(
+                tag, "<Enter>", lambda e: self.results.config(cursor="hand2"))
+            self.results.tag_bind(
+                tag, "<Leave>", lambda e: self.results.config(cursor="arrow"))
         self._done()
 
         n = len(results)
         self.status.config(
-            text="{} document{} for “{}”".format(
-                n, "" if n == 1 else "s", query.strip()))
+            text="{} document{} {}".format(n, "" if n == 1 else "s", label))
 
     def run(self):
         self.root.mainloop()

@@ -130,7 +130,7 @@ inflate the index, so removing them improves both speed and ranking quality.
    with a space (so punctuation is dropped). `*` is kept so wildcard queries
    survive preprocessing.
 
-No stemming or lemmatization is done, to keep the behaviour easy to explain.
+Stemming is optional and off by default (see section 18).
 
 ## 7. Inverted Indexing
 
@@ -149,6 +149,8 @@ No stemming or lemmatization is done, to keep the behaviour easy to explain.
 * `term_freq`: `doc_id -> Counter` of how often each term occurs in that document
   (used by the ranker for TF).
 * `doc_length`: `doc_id -> token count`.
+* `positions`: `term -> {doc_id: [positions]}`, a positional index over the token
+  stream *with* stop words kept, used for phrase queries (section 19).
 
 Methods: `build()`, `lookup(term)`, `vocabulary()`, `document_count()`,
 `term_frequency(term, doc_id)`.
@@ -180,6 +182,7 @@ Methods: `build()`, `lookup(term)`, `vocabulary()`, `document_count()`,
 | `love death` | contains *love* AND *death* |
 | `love OR death` | contains *love* OR *death* |
 | `love NOT death` | contains *love* but not *death* |
+| `"to be or not to be"` | exact phrase (needs the positional index) |
 | `-death` | rejected: a query needs at least one term to search for |
 
 `OR` is query-wide: a single `OR` anywhere makes every positive term optional, so
@@ -217,7 +220,9 @@ instant at this scale.
   `t`. Rare terms get a higher weight; the `+ 1` stops a term that appears in
   every document (like `love` in this corpus) from collapsing to zero weight, so
   a one-word query still ranks by term frequency.
-* **TF-IDF weight** `w(t, d) = tf(t, d) * idf(t)`.
+* **TF-IDF weight** `w(t, d) = tf(t, d) * idf(t)`. With sublinear TF switched on
+  (`--log-tf`) this becomes `(1 + log tf(t, d)) * idf(t)`, so a word repeated 50
+  times counts for far less than 50 times a word that appears once.
 
 Both documents and the query are represented as vectors of TF-IDF weights over
 the vocabulary. On the query side, each query term contributes one unit of term
@@ -315,10 +320,13 @@ clearly different scores, which is useful for showing ranking behaviour.
 ## 16. Limitations
 
 * Boolean queries are flat: AND, OR and NOT work, but they cannot be mixed,
-  nested, or grouped with parentheses, and there are no phrase or proximity
-  queries.
-* No stemming, so `love` and `loving` are different terms (use `lov*` instead).
-* Raw term-frequency weighting; no sublinear TF scaling or BM25.
+  nested, or grouped with parentheses. Phrase queries exist but proximity
+  queries (`a /3 b`) do not.
+* Stemming is off by default; with it on, wildcard patterns match the *stemmed*
+  vocabulary (so `*ing` finds almost nothing).
+* No BM25.
+* Rocchio feedback is pulled towards the whole play, because character names
+  dominate the feedback centroid (see section 21).
 * Wildcard expansion is a linear scan of the vocabulary.
 * The index is in memory only and rebuilt on every startup (fine for 25 documents).
 * Snippets show the text around the first matched term only, with no highlighting
@@ -327,10 +335,75 @@ clearly different scores, which is useful for showing ranking behaviour.
 
 ## 17. Possible Future Improvements
 
-* Add phrase queries and a proper Boolean parser with parentheses and precedence.
-* Add stemming (e.g. a simple Porter stemmer) as an optional step.
-* Store term positions to support phrase and proximity search.
-* Use sublinear TF weighting (`1 + log(tf)`) or BM25 for better ranking.
+* A proper Boolean parser with parentheses and precedence.
+* Proximity search, using the positional index that already exists.
+* BM25 as an alternative ranker.
 * Highlight the matched terms in the snippet and widen it around several matches.
 * Persist the index to disk so startup is instant.
 * Show which terms matched (including wildcard expansions) in the GUI.
+
+## 18. Stemming (optional)
+
+`src/stemmer.py` is a from-scratch Porter stemmer (1980 paper): `loving`, `loved`
+-> `love`; `caresses` -> `caress`; `relational` -> `relat`. Enable it with
+`python main.py --stem` (or `SearchEngine(dir, stemming=True)`). The same stemmer
+is applied to documents and queries, so they always agree. It shrinks the
+vocabulary (9,678 -> 6,725 terms here) and raises recall, at the cost of
+occasional over-merging. Wildcard patterns are never stemmed; they match against
+the stemmed vocabulary. Snippets stem each word of the raw text to find a match.
+
+## 19. Phrase Queries
+
+Put words in double quotes: `"alas poor yorick"`, `"to be or not to be"`, or
+negate one with `NOT "poor yorick"`. The positional index maps
+`term -> {doc: [positions]}`. To match a phrase, start with the positions of its
+first word and keep position `p` only if word *i* of the phrase occurs at
+`p + i` in the same document. Stop words are kept in the positional index, so a
+phrase made only of stop words still works. A phrase is a positive term in the
+AND/OR logic; its content words are scored with TF-IDF like any other term, and
+a pure stop-word phrase is ranked by how many times it occurs. Wildcards inside a
+phrase are ignored.
+
+## 20. Evaluation
+
+`python evaluate.py [-k 3] [--per-query]` measures retrieval quality on
+`data/relevance.json` (13 queries, each with the relevant act files), reporting
+Precision@k, Recall@k, F1@k, Mean Average Precision and Mean Reciprocal Rank
+(`src/evaluation.py`) for four configurations: raw/log TF, with/without stemming.
+
+The judgments are my own, made from knowledge of the plays, at act level; the
+set is small, so differences of a few hundredths are noise. Edit the JSON to
+add your own. Result at k=3:
+
+| config | P@3 | R@3 | F1@3 | MAP | MRR |
+| --- | --- | --- | --- | --- | --- |
+| raw tf | 0.692 | 0.867 | 0.733 | 0.921 | 1.000 |
+| log tf | 0.718 | 0.905 | 0.764 | 0.932 | 0.962 |
+| raw tf + stem | 0.692 | 0.867 | 0.733 | 0.905 | 0.962 |
+| log tf + stem | 0.692 | 0.867 | 0.733 | 0.923 | 0.962 |
+
+On this set log TF helps slightly and stemming does not; stemming helps some
+queries and hurts others. The 25 act-documents are few, so this is a demo of the
+method, not a benchmark.
+
+## 21. Rocchio Relevance Feedback
+
+Click **+ more like this** under a result in the GUI (click again to undo) to mark
+it relevant. The query vector is then moved towards the marked documents:
+
+```
+q' = alpha*q + beta*mean(relevant) - gamma*mean(non-relevant)
+```
+
+with alpha=1, beta=0.75, gamma=0.15 (textbook defaults), document vectors
+length-normalized, negative weights dropped, and only the 25 heaviest feedback
+terms added. The expanded query is scored against every document (`Ranker.rocchio`,
+`SearchEngine.feedback`), and the status bar lists the terms it added.
+
+`evaluate.py` also tests it by the residual-collection method (the judged document
+is removed before scoring, so feedback cannot win by returning it). On the 11
+non-phrase queries MAP went from 0.775 to **0.674**: feedback made ranking worse
+here. The added terms are mostly character names, so every act of the same play
+rises together. Smaller beta values (0.1-0.2, 5 terms) reached about the
+baseline or slightly above, but I chose those after seeing this test set, so
+treat that as a hint rather than a result.

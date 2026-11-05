@@ -1,5 +1,7 @@
 import re
 
+from src.stemmer import stem
+
 STOP_WORDS = {
     "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from",
     "had", "has", "have", "he", "her", "his", "i", "in", "is", "it", "its",
@@ -25,8 +27,22 @@ def remove_stop_words(tokens):
     return [t for t in tokens if t not in STOP_WORDS]
 
 
-def preprocess(text):
+def stem_tokens(tokens):
+    return [stem(t) for t in tokens]
+
+
+def preprocess(text, stemming=False):
     text = normalize(text)
     tokens = tokenize(text)
     tokens = remove_stop_words(tokens)
+    if stemming:
+        tokens = stem_tokens(tokens)
+    return tokens
+
+
+def positional_tokens(text, stemming=False):
+    """Every token in order, stop words kept, so phrase positions stay true."""
+    tokens = tokenize(normalize(text))
+    if stemming:
+        tokens = stem_tokens(tokens)
     return tokens
