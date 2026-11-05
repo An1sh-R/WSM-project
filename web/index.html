@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shakespeare Search</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --ink: #0b1220;
+    --muted: #6b7686;
+    --line: #e6eaf1;
+    --card: #ffffff;
+    --blue: #2f6bff;
+    --blue-deep: #1f54d6;
+    --blue-soft: #eaf1ff;
+    --mark: #dbe8ff;
+    --shadow: 0 1px 2px rgba(15, 30, 70, .04), 0 12px 32px -12px rgba(30, 70, 160, .18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #070b14;
+      --ink: #eef2fb;
+      --muted: #8e99ad;
+      --line: #1c2536;
+      --card: #0d1422;
+      --blue: #4b82ff;
+      --blue-deep: #6b97ff;
+      --blue-soft: #14203a;
+      --mark: #1d3566;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 32px -12px rgba(0, 0, 0, .6);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--ink); background: var(--bg);
+    font: 16px/1.55 Inter, "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* soft blue glow behind the hero, like the landing page */
+  body::before {
+    content: ""; position: fixed; inset: 0 0 auto 0; height: 520px; z-index: -1;
+    background:
+      radial-gradient(60% 70% at 50% 0%, rgba(47,107,255,.16), transparent 70%),
+      radial-gradient(35% 45% at 85% 10%, rgba(120,170,255,.14), transparent 70%);
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 20px 80px; }
+
+  nav { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: -.01em; }
+  .logo i {
+    width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
+    background: linear-gradient(180deg, #5b8dff, var(--blue-deep)); color: #fff; font-style: normal;
+    font-size: 14px; box-shadow: 0 4px 12px -2px rgba(47,107,255,.5);
+  }
+  .meta { color: var(--muted); font-size: 13px; }
+
+  .hero { text-align: center; padding: 56px 0 34px; transition: padding .25s; }
+  body.has-results .hero { padding: 14px 0 22px; }
+  .badge {
+    display: inline-flex; gap: 8px; align-items: center; padding: 6px 14px; font-size: 13px;
+    border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--muted);
+    box-shadow: var(--shadow);
+  }
+  .badge b { width: 7px; height: 7px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 0 4px var(--blue-soft); }
+  h1 {
+    margin: 22px 0 12px; font-size: clamp(36px, 7vw, 60px); line-height: 1.04;
+    letter-spacing: -.035em; font-weight: 700;
+  }
+  h1 span { color: var(--blue); }
+  body.has-results h1 { font-size: clamp(26px, 4vw, 34px); margin: 14px 0 0; }
+  .sub { color: var(--muted); font-size: 18px; max-width: 520px; margin: 0 auto; }
+  body.has-results .sub, body.has-results .badge { display: none; }
+
+  form {
+    display: flex; gap: 8px; align-items: center; padding: 8px 8px 8px 22px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 999px;
+    box-shadow: var(--shadow); transition: border-color .15s, box-shadow .15s;
+  }
+  form:focus-within { border-color: var(--blue); box-shadow: 0 0 0 4px var(--blue-soft), var(--shadow); }
+  form svg { flex: none; color: var(--muted); }
+  input {
+    flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink);
+    font: inherit; font-size: 17px; padding: 10px 0;
+  }
+  input::placeholder { color: var(--muted); opacity: .8; }
+  button.go {
+    flex: none; border: 0; cursor: pointer; color: #fff; font: inherit; font-weight: 600; font-size: 15px;
+    padding: 12px 24px; border-radius: 999px;
+    background: linear-gradient(180deg, #5b8dff, var(--blue-deep));
+    box-shadow: 0 6px 16px -4px rgba(47,107,255,.55), inset 0 1px 0 rgba(255,255,255,.25);
+    transition: transform .1s, filter .15s;
+  }
+  button.go:hover { filter: brightness(1.06); }
+  button.go:active { transform: scale(.98); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 18px 0 4px; }
+  .chip {
+    cursor: pointer; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+    font: inherit; font-size: 13.5px; padding: 6px 13px; border-radius: 999px; transition: .15s;
+  }
+  .chip:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-soft); }
+  .chip small { color: var(--muted); margin-left: 6px; font-size: 12px; }
+
+  #status { color: var(--muted); font-size: 14px; margin: 26px 2px 12px; min-height: 21px; }
+  #status .added { color: var(--blue); }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 18px;
+    padding: 18px 20px; margin-bottom: 12px; box-shadow: var(--shadow);
+    animation: rise .35s both;
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+  .card.marked { border-color: var(--blue); }
+  .top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .rank { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; width: 22px; }
+  .title { font-weight: 650; font-size: 17px; letter-spacing: -.01em; }
+  .act { font-size: 12px; font-weight: 600; color: var(--blue); background: var(--blue-soft); padding: 2px 10px; border-radius: 999px; }
+  .score { margin-left: auto; display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+  .bar { width: 90px; height: 6px; border-radius: 6px; background: var(--blue-soft); overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 6px; background: linear-gradient(90deg, #7aa2ff, var(--blue)); }
+  .snippet { margin: 12px 0 10px; color: var(--ink); opacity: .82; font-size: 15px; }
+  mark { background: var(--mark); color: inherit; border-radius: 4px; padding: 0 2px; }
+  .more {
+    border: 0; background: transparent; cursor: pointer; color: var(--blue); font: inherit;
+    font-size: 13.5px; font-weight: 600; padding: 4px 0;
+  }
+  .more:hover { text-decoration: underline; }
+  .card.marked .more { color: var(--muted); }
+
+  .empty { text-align: center; color: var(--muted); padding: 56px 0; }
+  footer { text-align: center; color: var(--muted); font-size: 12.5px; margin-top: 40px; }
+  code { background: var(--blue-soft); padding: 1px 6px; border-radius: 6px; font-size: .92em; }
+  @media (max-width: 520px) {
+    .score .bar { display: none; }
+    button.go { padding: 12px 18px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <div class="logo"><i>S</i> Shakespeare Search</div>
+    <div class="meta" id="mode"></div>
+  </nav>
+
+  <header class="hero">
+    <div class="badge"><b></b><span id="info">Loading collection…</span></div>
+    <h1>Find any line in <span>Shakespeare</span>.</h1>
+    <p class="sub">A classic search engine, built from scratch: inverted index, TF-IDF and cosine ranking.</p>
+  </header>
+
+  <form id="form" autocomplete="off">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input id="q" placeholder="Try  love death   ·   king*   ·   &quot;to be or not to be&quot;" autofocus>
+    <button class="go" type="submit">Search</button>
+  </form>
+
+  <div class="chips" id="chips"></div>
+  <div id="status"></div>
+  <main id="results"></main>
+
+  <footer>
+    <code>a b</code> AND &nbsp; <code>a OR b</code> &nbsp; <code>a NOT b</code> &nbsp; <code>king*</code> wildcard &nbsp; <code>"exact phrase"</code>
+  </footer>
+</div>
+
+<script>
+const EXAMPLES = [
+  ["love death", "AND"], ["ghost OR crown", "OR"], ["hamlet NOT ghost", "NOT"],
+  ["king*", "wildcard"], ["\"to be or not to be\"", "phrase"], ["mach*ne", "infix"],
+];
+const $ = id => document.getElementById(id);
+let query = "";
+let relevant = [];
+
+function prettyName(file) {
+  const m = file.replace(".txt", "").match(/^(.*)_act(\d+)$/);
+  if (!m) return { play: file, act: "" };
+  const small = new Set(["and", "of", "the", "that", "you", "it", "like", "as"]);
+  const words = m[1].split("_").map((w, i) =>
+    (i > 0 && small.has(w)) ? w : w[0].toUpperCase() + w.slice(1));
+  return { play: words.join(" ").replace("Alls", "All's"), act: "Act " + m[2] };
+}
+
+function highlighter(q) {
+  const words = [];
+  for (const m of q.matchAll(/"([^"]*)"|(\S+)/g)) {
+    const raw = m[1] ?? m[2];
+    for (let w of raw.split(/\s+/)) {
+      if (/^(or|not)$/i.test(w) || w.startsWith("-")) continue;
+      w = w.replace(/[^A-Za-z0-9*']/g, "");
+      if (w.replace(/\*/g, "")) words.push(w);
+    }
+  }
+  if (!words.length) return null;
+  const body = words.map(w => w.split("*").map(p => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\w*"));
+  return new RegExp("\\b(" + body.join("|") + ")" + "\\w*", "gi");
+}
+
+function fillSnippet(el, text, re) {
+  if (!re) { el.textContent = text; return; }
+  let last = 0;
+  for (const m of text.matchAll(re)) {
+    if (m.index > last) el.append(text.slice(last, m.index));
+    const mk = document.createElement("mark");
+    mk.textContent = m[0];
+    el.append(mk);
+    last = m.index + m[0].length;
+  }
+  el.append(text.slice(last));
+}
+
+function notice(text) {
+  const d = document.createElement("div");
+  d.className = "empty";
+  d.textContent = text;
+  $("results").replaceChildren(d);
+}
+
+const NOTICES = {
+  empty: "Type a query to search the collection.",
+  only_stopwords: "That query is only stop words. Try something more specific.",
+  no_positive_terms: "A query needs at least one word to search for, not just exclusions.",
+  no_match: "No matching documents found.",
+};
+
+function render(data, label) {
+  document.body.classList.add("has-results");
+  const status = $("status");
+  status.replaceChildren();
+  if (data.status !== "ok") {
+    status.textContent = "No results " + label;
+    notice(NOTICES[data.status] || "Something went wrong.");
+    return;
+  }
+  const n = data.results.length;
+  status.append(n + (n === 1 ? " document " : " documents ") + label);
+  if (data.expanded_terms && data.expanded_terms.length) {
+    const s = document.createElement("span");
+    s.className = "added";
+    s.textContent = " · added terms: " + data.expanded_terms.slice(0, 6).join(", ");
+    status.append(s);
+  }
+
+  const re = highlighter(query);
+  const frag = document.createDocumentFragment();
+  data.results.forEach((r, i) => {
+    const { play, act } = prettyName(r.filename);
+    const marked = relevant.includes(r.filename);
+    const card = document.createElement("article");
+    card.className = "card" + (marked ? " marked" : "");
+    card.style.animationDelay = Math.min(i, 8) * 30 + "ms";
+
+    const top = document.createElement("div");
+    top.className = "top";
+    const rank = Object.assign(document.createElement("span"), { className: "rank", textContent: i + 1 });
+    const title = Object.assign(document.createElement("span"), { className: "title", textContent: play });
+    const actEl = Object.assign(document.createElement("span"), { className: "act", textContent: act });
+    const score = document.createElement("span");
+    score.className = "score";
+    const bar = document.createElement("span");
+    bar.className = "bar";
+    const fill = document.createElement("i");
+    fill.style.width = Math.max(3, r.relative) + "%";
+    bar.append(fill);
+    score.append(bar, Math.round(r.relative) + "% · " + r.score.toFixed(4));
+    top.append(rank, title, actEl, score);
+
+    const snip = document.createElement("p");
+    snip.className = "snippet";
+    fillSnippet(snip, r.preview, re);
+
+    const more = document.createElement("button");
+    more.className = "more";
+    more.type = "button";
+    more.textContent = marked ? "✓ Marked relevant (undo)" : "+ More like this";
+    more.onclick = () => toggleFeedback(r.filename);
+
+    card.append(top, snip, more);
+    frag.append(card);
+  });
+  $("results").replaceChildren(frag);
+}
+
+async function runSearch(q) {
+  query = q;
+  relevant = [];
+  const res = await fetch("/api/search?q=" + encodeURIComponent(q));
+  render(await res.json(), "for “" + q.trim() + "”");
+}
+
+async function toggleFeedback(file) {
+  const i = relevant.indexOf(file);
+  if (i >= 0) relevant.splice(i, 1); else relevant.push(file);
+  if (!relevant.length) return runSearchKeep();
+  const res = await fetch("/api/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, relevant }),
+  });
+  const n = relevant.length;
+  render(await res.json(), "refined by " + n + " marked document" + (n === 1 ? "" : "s"));
+}
+
+async function runSearchKeep() {
+  const res = await fetch("/api/search?q=" + encodeURIComponent(query));
+  render(await res.json(), "for “" + query.trim() + "”");
+}
+
+$("form").addEventListener("submit", e => {
+  e.preventDefault();
+  runSearch($("q").value);
+});
+
+for (const [q, tag] of EXAMPLES) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "chip";
+  b.append(q, Object.assign(document.createElement("small"), { textContent: tag }));
+  b.onclick = () => { $("q").value = q; runSearch(q); };
+  $("chips").append(b);
+}
+
+fetch("/api/info").then(r => r.json()).then(i => {
+  $("info").textContent = i.documents + " act-documents · " + i.terms.toLocaleString() + " distinct terms";
+  const bits = [];
+  if (i.stemming) bits.push("stemming");
+  if (i.sublinear_tf) bits.push("log tf");
+  $("mode").textContent = bits.join(" · ");
+});
+</script>
+</body>
+</html>

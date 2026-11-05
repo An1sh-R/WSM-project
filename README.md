@@ -286,8 +286,12 @@ Requirements: Python 3.8+ with Tkinter (included in standard CPython on Windows
 and macOS; on Linux install `python3-tk`). No packages to install.
 
 ```
-python main.py
+python main.py            # web page at http://127.0.0.1:8000
+python main.py --tk       # old Tkinter window
 ```
+
+Options: `--stem`, `--log-tf`, `--port N`, `--no-browser`. The web page is
+`web/index.html` served by `server.py` (standard library only, localhost only).
 
 The console prints the document and vocabulary counts, then the GUI window opens.
 
